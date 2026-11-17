@@ -858,4 +858,110 @@ async function addGallery(e) {
 
   try {
     const mediaType = /\.(mp4|mov|webm)/i.test(pastedUrl) ? 'video' : 'image';
-    const cen = baseCen || catLabels[cat][0]
+    const cen = baseCen || catLabels[cat][0];
+    const cel = baseCel || (baseCen ? cen : catLabels[cat][1]);
+    const { error } = await sb.from('gallery_items').insert({
+      media_type: mediaType, media_url: pastedUrl,
+      caption_en: cen, caption_el: cel, category: cat
+    });
+    if (error) throw error;
+    await loadAllData();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Upload All Selected';
+    wrap.classList.add('hidden'); bar.style.width = '0%'; statusEl.classList.add('hidden');
+  }
+}
+
+function startEditMember(id) {
+  state.editingMemberId = id;
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function clearMemberPhoto(id) {
+  if (!confirm('Remove photo for this member?')) return;
+  const { error } = await sb.from('band_members').update({ photo_url: '' }).eq('id', id);
+  if (error) return alert(error.message);
+  await loadAllData();
+}
+
+async function saveMemberForm(e) {
+  e.preventDefault();
+  const editing = state.editingMemberId ? state.members.find(m => m.id === state.editingMemberId) : null;
+  let photoUrl = editing ? (editing.photo_url || '') : '';
+  const f = document.getElementById('m-photo').files[0];
+  if (f) { const up = await uploadCloudinary(f); photoUrl = up.url; }
+  const ren = document.getElementById('m-ren').value;
+  const ben = document.getElementById('m-ben').value;
+  const payload = {
+    name: document.getElementById('m-name').value.trim(),
+    photo_url: photoUrl,
+    role_en: ren,
+    role_el: document.getElementById('m-rel').value || ren,
+    bio_en: ben,
+    bio_el: document.getElementById('m-bel').value || ben,
+    is_tribute: document.getElementById('m-trib').checked,
+    sort_order: parseInt(document.getElementById('m-order').value || '10', 10) || 10
+  };
+  const res = editing
+    ? await sb.from('band_members').update(payload).eq('id', editing.id)
+    : await sb.from('band_members').insert(payload);
+  if (res.error) return alert(res.error.message);
+  state.editingMemberId = null;
+  await loadAllData();
+}
+
+async function addPartner(e) {
+  e.preventDefault();
+  let logoUrl = '';
+  const f = document.getElementById('p-logo').files[0];
+  if (f) { const up = await uploadCloudinary(f); logoUrl = up.url; }
+  const den = document.getElementById('p-den').value;
+  const { error } = await sb.from('partners').insert({
+    name: document.getElementById('p-name').value, logo_url: logoUrl,
+    tag: document.getElementById('p-tag').value || 'Partner',
+    website_url: document.getElementById('p-url').value.trim(),
+    description_en: den, description_el: document.getElementById('p-del').value || den, sort_order: 10
+  });
+  if (error) return alert(error.message);
+  await loadAllData();
+}
+
+async function delRow(table, id) {
+  if (!confirm('Delete this item?')) return;
+  if (table === 'band_members' && state.editingMemberId === id) state.editingMemberId = null;
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) return alert(error.message);
+  await loadAllData();
+}
+
+function render() {
+  renderNav();
+  const app = document.getElementById('app');
+  if (state.loading && !state.members.length) {
+    app.innerHTML = `<div class="py-24 text-center text-sm text-cream/60">Loading Surf Giants...</div>`;
+    return;
+  }
+  if (state.page === 'home') app.innerHTML = renderHome();
+  else if (state.page === 'videos') app.innerHTML = renderVideos();
+  else if (state.page === 'gallery') app.innerHTML = renderGallery();
+  else if (state.page === 'partners') app.innerHTML = renderPartners();
+  else if (state.page === 'contact') app.innerHTML = renderContact();
+  else if (state.page === 'admin') app.innerHTML = renderAdmin();
+}
+
+window.addEventListener('hashchange', () => { syncHash(); render(); });
+sb.auth.onAuthStateChange((_ev, session) => {
+  state.user = session?.user || null;
+  loadAllData();
+});
+syncHash();
+sb.auth.getSession().then(({ data }) => {
+  state.user = data.session?.user || null;
+  loadAllData();
+});
+</script>
+</body>
+</html>
